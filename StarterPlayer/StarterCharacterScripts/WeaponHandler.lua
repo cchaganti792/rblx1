@@ -72,21 +72,23 @@ mouse.Button1Down:Connect(function()
     local weaponData = Config.WEAPONS[tier]
     if not weaponData then return end
 
+    -- Lock immediately and always unlock after cooldown (before anything that could error)
     canShoot = false
+    task.delay(weaponData.fireRate, function() canShoot = true end)
 
-    -- Raycast from camera through mouse
-    local origin    = hrp.Position + Vector3.new(0, 1.5, 0)
-    local direction = (mouse.Hit.Position - origin).Unit
+    local origin  = hrp.Position + Vector3.new(0, 1.5, 0)
+    local hitPos  = mouse.Hit.Position
+    local rawDir  = hitPos - origin
+    if rawDir.Magnitude < 0.1 then return end
+    local direction = rawDir.Unit
 
-    -- Show client muzzle flash at player's position
     showMuzzleFlash(origin + direction * 2)
 
-    -- Draw a quick tracer line
-    local dist    = (mouse.Hit.Position - origin).Magnitude
-    local tracer  = Instance.new("Part")
-    tracer.Size   = Vector3.new(0.1, 0.1, math.min(dist, weaponData.range))
-    tracer.CFrame = CFrame.lookAt(origin, origin + direction) *
-                    CFrame.new(0, 0, -math.min(dist, weaponData.range)/2)
+    -- Tracer line
+    local tracerLen = math.min(rawDir.Magnitude, weaponData.range)
+    local tracer    = Instance.new("Part")
+    tracer.Size     = Vector3.new(0.1, 0.1, tracerLen)
+    tracer.CFrame   = CFrame.lookAt(origin, origin + direction) * CFrame.new(0, 0, -tracerLen / 2)
     tracer.Material    = Enum.Material.Neon
     tracer.BrickColor  = BrickColor.new("Bright yellow")
     tracer.Anchored    = true
@@ -94,13 +96,7 @@ mouse.Button1Down:Connect(function()
     tracer.Parent      = workspace
     game:GetService("Debris"):AddItem(tracer, 0.08)
 
-    -- Fire to server
     RE_Shoot:FireServer(origin, direction, tier)
-
-    -- Cooldown based on weapon fire rate
-    task.delay(weaponData.fireRate, function()
-        canShoot = true
-    end)
 end)
 
 -- ── Crosshair ─────────────────────────────────────────────────────────

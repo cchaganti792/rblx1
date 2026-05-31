@@ -268,31 +268,27 @@ function copLoop(cop)
     end
 end
 
--- ── Player shoots — proximity + angle check (no wall blockage) ────────
+-- ── Player shoots — ray-line distance hit detection ───────────────────
 RS:WaitForChild("RE_ShootWeapon").OnServerEvent:Connect(function(player, origin, direction, tier)
     local weaponData = Config.WEAPONS[tier]
     if not weaponData then return end
     local wVal = player:FindFirstChild("WeaponTier")
     if not wVal or wVal.Value < 1 then return end
 
-    -- Find best cop: closest one that is roughly in the shot direction
-    local bestCop, bestScore = nil, -1
+    local dir = direction.Unit
+    local bestCop, bestDist = nil, math.huge
 
     for _, cop in ipairs(AllCops) do
         if cop.alive and cop.model and cop.model.Parent then
             local copPos = cop.torso.Position
-            local toCop  = copPos - origin
-            local dist   = toCop.Magnitude
-
-            if dist <= weaponData.range then
-                -- Dot product: 1 = perfect aim, 0 = 90 degrees off
-                local dot = toCop.Unit:Dot(direction.Unit)
-                if dot > 0.5 then  -- within ~60 degree cone
-                    local score = dot - (dist / weaponData.range) * 0.3
-                    if score > bestScore then
-                        bestScore = score
-                        bestCop   = cop
-                    end
+            -- Project cop onto the ray to find the closest point
+            local t = (copPos - origin):Dot(dir)
+            if t > 0 and t <= weaponData.range then
+                -- Perpendicular distance from cop center to the bullet ray
+                local perpDist = (copPos - (origin + dir * t)).Magnitude
+                if perpDist < 6 and perpDist < bestDist then
+                    bestDist = perpDist
+                    bestCop  = cop
                 end
             end
         end
@@ -300,7 +296,6 @@ RS:WaitForChild("RE_ShootWeapon").OnServerEvent:Connect(function(player, origin,
 
     if bestCop then
         damageCop(bestCop, weaponData.damage)
-        -- Visual flash at cop position
         RE_Flash:FireAllClients(bestCop.torso.Position)
     end
 end)
