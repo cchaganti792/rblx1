@@ -84,6 +84,28 @@ local function setupDiamondPickups()
                         player.Character.Humanoid.Health or 0,
                         data.diamonds,
                         data.currentCave or 0)
+
+                    -- Open the exit gate when player collects enough diamonds
+                    if data.diamonds >= Config.DIAMONDS_TO_WIN then
+                        local gate = workspace:FindFirstChild("ExitGate")
+                        if gate then
+                            for _, child in ipairs(gate:GetChildren()) do
+                                if child.Name == "GateBar" then child:Destroy() end
+                            end
+                            local lintel = gate:FindFirstChild("GateLintel")
+                            if lintel then
+                                local billboardGui = lintel:FindFirstChildOfClass("BillboardGui")
+                                if billboardGui then
+                                    local lbl = billboardGui:FindFirstChild("SignText")
+                                    if lbl then
+                                        lbl.Text       = "EXIT OPEN!\nHead north in cave 1!"
+                                        lbl.TextColor3 = Color3.fromRGB(80, 255, 80)
+                                        lbl.BackgroundColor3 = Color3.fromRGB(0, 20, 0)
+                                    end
+                                end
+                            end
+                        end
+                    end
                 end)
             end
         end
@@ -92,7 +114,7 @@ end
 
 -- ── Exit zone touch (win condition) ───────────────────────────────────
 local function setupExitZone()
-    local exitZone = workspace:FindFirstChild("ExitZone")
+    local exitZone = workspace:FindFirstChild("ExitZone", true)  -- recursive: ExitZone lives inside ExitGate model
     if not exitZone then return end
 
     exitZone.Touched:Connect(function(hit)

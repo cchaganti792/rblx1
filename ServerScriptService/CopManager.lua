@@ -303,7 +303,7 @@ function copLoop(cop)
 end
 
 -- ── Player shoots — ray-line distance hit detection ───────────────────
-RS:WaitForChild("RE_ShootWeapon").OnServerEvent:Connect(function(player, origin, direction, tier)
+getRemote("RE_ShootWeapon").OnServerEvent:Connect(function(player, origin, direction, tier)
     local weaponData = Config.WEAPONS[tier]
     if not weaponData then return end
     local wVal = player:FindFirstChild("WeaponTier")
