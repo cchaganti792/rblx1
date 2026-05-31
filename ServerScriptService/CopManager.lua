@@ -1,14 +1,30 @@
 -- CopManager.lua
 -- Script → ServerScriptService
 
+print("[CopManager] Script started")
+
 local RS      = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
 local Config  = require(RS:WaitForChild("GameConfig"))
-local RE_Take = RS:WaitForChild("RE_TakeDamage")
-local RE_Flash= RS:WaitForChild("RE_CopFlash")
 
+-- Create remotes if SetupRemotes hasn't run yet
+local function getRemote(name)
+    local re = RS:FindFirstChild(name)
+    if not re then
+        re = Instance.new("RemoteEvent")
+        re.Name   = name
+        re.Parent = RS
+    end
+    return re
+end
+
+local RE_Take = getRemote("RE_TakeDamage")
+local RE_Flash= getRemote("RE_CopFlash")
+
+print("[CopManager] Remotes ready — waiting 3s for world to load")
 task.wait(3)
+print("[CopManager] Starting cop spawn")
 
 local FY      = Config.FLOOR_Y
 local TORSO_Y = FY + 3.5   -- torso height so boots sit on floor
