@@ -116,6 +116,21 @@ local function makeCopModel(spawnPos)
     return model, parts, torso
 end
 
+-- ── Line-of-sight check (cop parts are CanCollide=false so ignored) ──
+local function hasLOS(fromPos, toPos)
+    local dir    = toPos - fromPos
+    local result = workspace:Raycast(fromPos, dir)
+    if result then
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if pl.Character and result.Instance:IsDescendantOf(pl.Character) then
+                return true  -- ray hit the player directly
+            end
+        end
+        return false  -- ray hit a wall / nook / parapet first
+    end
+    return true  -- nothing blocked the path
+end
+
 -- ── Patrol point inside a cave ────────────────────────────────────────
 local function patrolPoint(caveId)
     local c = Config.CAVES[caveId].center
@@ -133,6 +148,7 @@ local function shootPlayer(cop, player)
     if not hrp then return end
     local dist = (cop.torso.Position - hrp.Position).Magnitude
     if dist > Config.COP_SHOOT_RANGE then return end
+    if not hasLOS(cop.torso.Position, hrp.Position) then return end
     local ratio  = 1 - (dist / Config.COP_SHOOT_RANGE)
     local damage = math.max(5, math.floor(Config.COP_BASE_DAMAGE * ratio))
     local hum    = player.Character:FindFirstChild("Humanoid")
@@ -217,8 +233,10 @@ function copLoop(cop)
                 end
             end
 
-            -- Detect if player is within range
-            local detected = nearest ~= nil and nearDist <= Config.COP_DETECT_RANGE
+            -- Detect if player is within range AND visible (LOS through CanCollide=true walls)
+            local detected = nearest ~= nil
+                and nearDist <= Config.COP_DETECT_RANGE
+                and hasLOS(torsoPos, nearHRP.Position)
 
             if detected then
                 -- ── CHASE ─────────────────────────────────────────────
