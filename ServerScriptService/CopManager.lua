@@ -1,6 +1,5 @@
 -- CopManager.lua
 -- Script → ServerScriptService
--- Cops with full police uniform, face, arms, legs. Patrol + chase AI. Regeneration.
 
 local RS      = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
@@ -11,205 +10,113 @@ local RE_Flash= RS:WaitForChild("RE_CopFlash")
 
 task.wait(3)
 
-local FY      = Config.FLOOR_Y   -- 2 (floor surface)
-local TORSO_Y = FY + 3.5         -- torso center so boots touch floor
+local FY      = Config.FLOOR_Y
+local TORSO_Y = FY + 3.5   -- torso height so boots sit on floor
 
 local AllCops   = {}
 local COP_MAX_HP = 100
 
--- ── Weld helper ───────────────────────────────────────────────────────
-local function weld(torso, part, offset)
-    part.CFrame   = torso.CFrame * CFrame.new(offset)
-    part.Anchored = false
-    local wc = Instance.new("WeldConstraint")
-    wc.Part0 = torso
-    wc.Part1 = part
-    wc.Parent = torso
-    part.Parent = torso.Parent
-    return part
+-- ── Build cop CFrame from position + look direction ───────────────────
+local function makeCF(pos, lookDir)
+    if lookDir and lookDir.Magnitude > 0.01 then
+        local angle = math.atan2(lookDir.X, lookDir.Z)
+        return CFrame.new(pos) * CFrame.Angles(0, angle, 0)
+    end
+    return CFrame.new(pos)
 end
 
--- ── Build realistic police officer model ──────────────────────────────
+-- ── Move all cop parts together ───────────────────────────────────────
+local function moveCop(cop, newCF)
+    for _, entry in ipairs(cop.parts) do
+        entry.part.CFrame = newCF * entry.offset
+    end
+end
+
+-- ── Build realistic police officer — ALL parts Anchored ───────────────
 local function makeCopModel(spawnPos)
     local model = Instance.new("Model")
     model.Name  = "Cop"
 
-    local cf = CFrame.new(spawnPos.X, TORSO_Y, spawnPos.Z)
+    local baseCF = CFrame.new(spawnPos.X, TORSO_Y, spawnPos.Z)
+    local parts  = {}  -- { part, offset CFrame }
 
-    -- ── TORSO (anchor, navy blue uniform) ─────────────────────────────
-    local torso = Instance.new("Part")
-    torso.Name      = "Torso"
-    torso.Size      = Vector3.new(2, 2, 1)
-    torso.BrickColor= BrickColor.new("Navy blue")
-    torso.Material  = Enum.Material.SmoothPlastic
-    torso.Anchored  = true
-    torso.CFrame    = cf
-    torso.Parent    = model
+    local function add(name, size, offset, color, mat)
+        local p = Instance.new("Part")
+        p.Name      = name
+        p.Size      = size
+        p.BrickColor= color
+        p.Material  = mat or Enum.Material.SmoothPlastic
+        p.Anchored  = true
+        p.CanCollide= false
+        p.CastShadow= true
+        p.CFrame    = baseCF * CFrame.new(offset)
+        p.Parent    = model
+        table.insert(parts, { part = p, offset = CFrame.new(offset) })
+        return p
+    end
 
-    -- "POLICE" text on back of torso
-    local sg = Instance.new("SurfaceGui")
-    sg.Face = Enum.NormalId.Back
-    sg.Parent = torso
-    local sgLabel = Instance.new("TextLabel")
-    sgLabel.Size = UDim2.new(1,0,1,0)
-    sgLabel.BackgroundColor3 = Color3.fromRGB(255,255,255)
-    sgLabel.Text = "POLICE"
-    sgLabel.TextColor3 = Color3.fromRGB(0,0,128)
-    sgLabel.Font = Enum.Font.GothamBold
-    sgLabel.TextScaled = true
-    sgLabel.Parent = sg
+    -- Torso (primary)
+    local torso = add("Torso",    Vector3.new(2,   2,   1),   Vector3.new(0, 0, 0),      BrickColor.new("Navy blue"))
+    add("Belt",                   Vector3.new(2.1, 0.3, 1.1), Vector3.new(0,-1.1, 0),    BrickColor.new("Black"))
+    add("Badge",                  Vector3.new(0.45,0.45,0.1), Vector3.new(-0.5,0.5,-0.55),BrickColor.new("Bright yellow"), Enum.Material.Metal)
+    add("Gun",                    Vector3.new(0.25,0.7, 1),   Vector3.new(1.1,-0.9,-0.3), BrickColor.new("Dark stone grey"), Enum.Material.Metal)
 
-    -- Gold badge on front chest
-    local badge = Instance.new("Part")
-    badge.Name = "Badge"
-    badge.Size = Vector3.new(0.45, 0.45, 0.1)
-    badge.BrickColor = BrickColor.new("Bright yellow")
-    badge.Material = Enum.Material.Metal
-    weld(torso, badge, Vector3.new(-0.5, 0.5, -0.55))
-
-    -- Black belt
-    local belt = Instance.new("Part")
-    belt.Name = "Belt"
-    belt.Size = Vector3.new(2.1, 0.3, 1.1)
-    belt.BrickColor = BrickColor.new("Black")
-    belt.Material = Enum.Material.SmoothPlastic
-    weld(torso, belt, Vector3.new(0, -1.1, 0))
-
-    -- Gun holster on right hip
-    local gun = Instance.new("Part")
-    gun.Name = "Gun"
-    gun.Size = Vector3.new(0.25, 0.7, 1)
-    gun.BrickColor = BrickColor.new("Dark stone grey")
-    gun.Material = Enum.Material.Metal
-    weld(torso, gun, Vector3.new(1.1, -0.9, -0.3))
-
-    -- ── HEAD (skin tone with face decal) ──────────────────────────────
-    local head = Instance.new("Part")
-    head.Name      = "Head"
-    head.Size      = Vector3.new(2, 1, 1)
-    head.BrickColor= BrickColor.new("Nougat")
-    head.Material  = Enum.Material.SmoothPlastic
-    weld(torso, head, Vector3.new(0, 1.5, 0))
-
-    -- Face decal (default Roblox face on the front)
-    local face = Instance.new("Decal")
+    -- Head + face
+    local head = add("Head",      Vector3.new(2,   1,   1),   Vector3.new(0, 1.5, 0),    BrickColor.new("Nougat"))
+    local face  = Instance.new("Decal")
     face.Texture = "rbxasset://textures/face.png"
     face.Face    = Enum.NormalId.Front
     face.Parent  = head
 
-    -- ── POLICE HAT ────────────────────────────────────────────────────
-    local hatBrim = Instance.new("Part")
-    hatBrim.Name      = "HatBrim"
-    hatBrim.Size      = Vector3.new(2.5, 0.15, 2.1)
-    hatBrim.BrickColor= BrickColor.new("Black")
-    hatBrim.Material  = Enum.Material.SmoothPlastic
-    weld(torso, hatBrim, Vector3.new(0, 2.15, -0.1))
+    -- Hat
+    add("HatBrim",                Vector3.new(2.5, 0.15,2.1), Vector3.new(0, 2.15,-0.1), BrickColor.new("Black"))
+    add("HatTop",                 Vector3.new(2,   0.9, 1.8), Vector3.new(0, 2.6,  0),   BrickColor.new("Black"))
+    add("HatBadge",               Vector3.new(0.4, 0.35,0.1), Vector3.new(0, 2.6, -0.95),BrickColor.new("Mid gray"), Enum.Material.Metal)
 
-    local hatTop = Instance.new("Part")
-    hatTop.Name      = "HatTop"
-    hatTop.Size      = Vector3.new(2, 0.9, 1.8)
-    hatTop.BrickColor= BrickColor.new("Black")
-    hatTop.Material  = Enum.Material.SmoothPlastic
-    weld(torso, hatTop, Vector3.new(0, 2.6, 0))
+    -- Arms + hands
+    add("LeftArm",                Vector3.new(1,   2,   1),   Vector3.new(-1.5, 0,   0), BrickColor.new("Navy blue"))
+    add("RightArm",               Vector3.new(1,   2,   1),   Vector3.new( 1.5, 0,   0), BrickColor.new("Navy blue"))
+    add("LeftHand",               Vector3.new(0.9, 0.6, 0.9), Vector3.new(-1.5,-1.3, 0), BrickColor.new("Nougat"))
+    add("RightHand",              Vector3.new(0.9, 0.6, 0.9), Vector3.new( 1.5,-1.3, 0), BrickColor.new("Nougat"))
 
-    -- Silver shield on hat front
-    local hatBadge = Instance.new("Part")
-    hatBadge.Name      = "HatBadge"
-    hatBadge.Size      = Vector3.new(0.4, 0.35, 0.1)
-    hatBadge.BrickColor= BrickColor.new("Mid gray")
-    hatBadge.Material  = Enum.Material.Metal
-    weld(torso, hatBadge, Vector3.new(0, 2.6, -0.95))
+    -- Legs + boots
+    add("LeftLeg",                Vector3.new(0.9, 2,   1),   Vector3.new(-0.5,-2,   0), BrickColor.new("Dark blue"))
+    add("RightLeg",               Vector3.new(0.9, 2,   1),   Vector3.new( 0.5,-2,   0), BrickColor.new("Dark blue"))
+    add("LeftBoot",               Vector3.new(1,   0.5, 1.3), Vector3.new(-0.5,-3.25,0.1),BrickColor.new("Black"))
+    add("RightBoot",              Vector3.new(1,   0.5, 1.3), Vector3.new( 0.5,-3.25,0.1),BrickColor.new("Black"))
 
-    -- ── ARMS (navy blue sleeves + skin hands) ─────────────────────────
-    local leftArm = Instance.new("Part")
-    leftArm.Name      = "LeftArm"
-    leftArm.Size      = Vector3.new(1, 2, 1)
-    leftArm.BrickColor= BrickColor.new("Navy blue")
-    leftArm.Material  = Enum.Material.SmoothPlastic
-    weld(torso, leftArm, Vector3.new(-1.5, 0, 0))
+    -- "POLICE" text on back
+    local sg = Instance.new("SurfaceGui")
+    sg.Face = Enum.NormalId.Back ; sg.Parent = torso
+    local sgL = Instance.new("TextLabel")
+    sgL.Size = UDim2.new(1,0,1,0) ; sgL.Text = "POLICE"
+    sgL.TextColor3 = Color3.fromRGB(0,0,128)
+    sgL.BackgroundColor3 = Color3.new(1,1,1)
+    sgL.Font = Enum.Font.GothamBold ; sgL.TextScaled = true ; sgL.Parent = sg
 
-    local rightArm = Instance.new("Part")
-    rightArm.Name      = "RightArm"
-    rightArm.Size      = Vector3.new(1, 2, 1)
-    rightArm.BrickColor= BrickColor.new("Navy blue")
-    rightArm.Material  = Enum.Material.SmoothPlastic
-    weld(torso, rightArm, Vector3.new(1.5, 0, 0))
-
-    local leftHand = Instance.new("Part")
-    leftHand.Name      = "LeftHand"
-    leftHand.Size      = Vector3.new(0.9, 0.6, 0.9)
-    leftHand.BrickColor= BrickColor.new("Nougat")
-    leftHand.Material  = Enum.Material.SmoothPlastic
-    weld(torso, leftHand, Vector3.new(-1.5, -1.3, 0))
-
-    local rightHand = Instance.new("Part")
-    rightHand.Name      = "RightHand"
-    rightHand.Size      = Vector3.new(0.9, 0.6, 0.9)
-    rightHand.BrickColor= BrickColor.new("Nougat")
-    rightHand.Material  = Enum.Material.SmoothPlastic
-    weld(torso, rightHand, Vector3.new(1.5, -1.3, 0))
-
-    -- ── LEGS (dark blue trousers + black boots) ───────────────────────
-    local leftLeg = Instance.new("Part")
-    leftLeg.Name      = "LeftLeg"
-    leftLeg.Size      = Vector3.new(0.9, 2, 1)
-    leftLeg.BrickColor= BrickColor.new("Dark blue")
-    leftLeg.Material  = Enum.Material.SmoothPlastic
-    weld(torso, leftLeg, Vector3.new(-0.5, -2, 0))
-
-    local rightLeg = Instance.new("Part")
-    rightLeg.Name      = "RightLeg"
-    rightLeg.Size      = Vector3.new(0.9, 2, 1)
-    rightLeg.BrickColor= BrickColor.new("Dark blue")
-    rightLeg.Material  = Enum.Material.SmoothPlastic
-    weld(torso, rightLeg, Vector3.new(0.5, -2, 0))
-
-    local leftBoot = Instance.new("Part")
-    leftBoot.Name      = "LeftBoot"
-    leftBoot.Size      = Vector3.new(1, 0.5, 1.3)
-    leftBoot.BrickColor= BrickColor.new("Black")
-    leftBoot.Material  = Enum.Material.SmoothPlastic
-    weld(torso, leftBoot, Vector3.new(-0.5, -3.25, 0.1))
-
-    local rightBoot = Instance.new("Part")
-    rightBoot.Name      = "RightBoot"
-    rightBoot.Size      = Vector3.new(1, 0.5, 1.3)
-    rightBoot.BrickColor= BrickColor.new("Black")
-    rightBoot.Material  = Enum.Material.SmoothPlastic
-    weld(torso, rightBoot, Vector3.new(0.5, -3.25, 0.1))
-
-    -- ── OVERHEAD NAME + HP ────────────────────────────────────────────
+    -- Overhead HP billboard
     local bg = Instance.new("BillboardGui")
-    bg.Size        = UDim2.new(0, 120, 0, 32)
-    bg.StudsOffset = Vector3.new(0, 4, 0)
-    bg.Parent      = head
+    bg.Size = UDim2.new(0,120,0,32) ; bg.StudsOffset = Vector3.new(0,4,0)
+    bg.Parent = head
 
     local nameL = Instance.new("TextLabel")
-    nameL.Size = UDim2.new(1,0,0.55,0)
-    nameL.BackgroundTransparency = 1
-    nameL.Text = "🚔 OFFICER"
-    nameL.TextColor3 = Color3.new(1,1,1)
-    nameL.Font = Enum.Font.GothamBold
-    nameL.TextScaled = true
-    nameL.Parent = bg
+    nameL.Size = UDim2.new(1,0,0.55,0) ; nameL.BackgroundTransparency = 1
+    nameL.Text = "🚔 OFFICER" ; nameL.TextColor3 = Color3.new(1,1,1)
+    nameL.Font = Enum.Font.GothamBold ; nameL.TextScaled = true ; nameL.Parent = bg
 
     local hpL = Instance.new("TextLabel")
-    hpL.Name = "HPLabel"
-    hpL.Size = UDim2.new(1,0,0.45,0)
-    hpL.Position = UDim2.new(0,0,0.55,0)
-    hpL.BackgroundTransparency = 1
-    hpL.Text = "HP: 100"
-    hpL.TextColor3 = Color3.fromRGB(80,255,80)
-    hpL.Font = Enum.Font.Gotham
-    hpL.TextScaled = true
-    hpL.Parent = bg
+    hpL.Name = "HPLabel" ; hpL.Size = UDim2.new(1,0,0.45,0)
+    hpL.Position = UDim2.new(0,0,0.55,0) ; hpL.BackgroundTransparency = 1
+    hpL.Text = "HP: 100" ; hpL.TextColor3 = Color3.fromRGB(80,255,80)
+    hpL.Font = Enum.Font.Gotham ; hpL.TextScaled = true ; hpL.Parent = bg
 
     model.PrimaryPart = torso
     model.Parent      = workspace
-    return model
+
+    return model, parts, torso
 end
 
--- ── Random patrol point inside a cave ─────────────────────────────────
+-- ── Patrol point inside a cave ────────────────────────────────────────
 local function patrolPoint(caveId)
     local c = Config.CAVES[caveId].center
     return Vector3.new(
@@ -219,31 +126,12 @@ local function patrolPoint(caveId)
     )
 end
 
--- ── Line of sight check ───────────────────────────────────────────────
-local function hasLOS(copPos, playerPos)
-    local dir = playerPos - copPos
-    if dir.Magnitude > Config.COP_DETECT_RANGE then return false end
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    local result = workspace:Raycast(copPos, dir, params)
-    if result then
-        if result.Instance.Name == "Hideout" then return false end
-        for _, pl in ipairs(Players:GetPlayers()) do
-            if pl.Character and result.Instance:IsDescendantOf(pl.Character) then
-                return true
-            end
-        end
-        return false
-    end
-    return true
-end
-
--- ── Shoot player ──────────────────────────────────────────────────────
+-- ── Shoot player (distance-based damage) ─────────────────────────────
 local function shootPlayer(cop, player)
     if not player.Character then return end
     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    local dist   = (cop.model.Torso.Position - hrp.Position).Magnitude
+    local dist = (cop.torso.Position - hrp.Position).Magnitude
     if dist > Config.COP_SHOOT_RANGE then return end
     local ratio  = 1 - (dist / Config.COP_SHOOT_RANGE)
     local damage = math.max(5, math.floor(Config.COP_BASE_DAMAGE * ratio))
@@ -251,19 +139,20 @@ local function shootPlayer(cop, player)
     if hum and hum.Health > 0 then
         hum:TakeDamage(damage)
         RE_Take:FireClient(player, damage, hum.Health)
-        RE_Flash:FireAllClients(cop.model.Torso.Position)
+        RE_Flash:FireAllClients(cop.torso.Position)
     end
 end
 
--- ── Damage & kill cop ─────────────────────────────────────────────────
+-- ── Damage cop ────────────────────────────────────────────────────────
 local function damageCop(cop, dmg)
-    cop.hp = cop.hp - dmg
+    cop.hp = math.max(0, cop.hp - dmg)
 
+    -- Update HP label
     local head = cop.model:FindFirstChild("Head")
     local bg   = head and head:FindFirstChildOfClass("BillboardGui")
     local hpL  = bg and bg:FindFirstChild("HPLabel")
     if hpL then
-        hpL.Text = "HP: " .. math.max(0, cop.hp)
+        hpL.Text = "HP: " .. cop.hp
         hpL.TextColor3 = cop.hp > 60 and Color3.fromRGB(80,255,80)
                       or cop.hp > 30 and Color3.fromRGB(255,200,0)
                       or Color3.fromRGB(255,60,60)
@@ -281,19 +170,24 @@ local function damageCop(cop, dmg)
         task.delay(Config.COP_REGEN_TIME, function()
             local caveData = Config.CAVES[originCave]
             if not caveData then return end
-            local c = caveData.center
+            local c  = caveData.center
             local sp = Vector3.new(c.X + math.random(-20,20), FY, c.Z + math.random(-20,20))
-            local newCop = { model=makeCopModel(sp), caveId=originCave, alive=true, hp=COP_MAX_HP }
+            local newModel, newParts, newTorso = makeCopModel(sp)
+            local newCop = {
+                model  = newModel,
+                parts  = newParts,
+                torso  = newTorso,
+                caveId = originCave,
+                alive  = true,
+                hp     = COP_MAX_HP,
+            }
             table.insert(AllCops, newCop)
-            task.spawn(function()
-                local ok, err = pcall(function() copLoop(newCop) end)
-                if not ok then warn("[CopManager] copLoop error: " .. tostring(err)) end
-            end)
+            task.spawn(copLoop, newCop)
         end)
     end
 end
 
--- ── Main AI loop ──────────────────────────────────────────────────────
+-- ── Main cop AI loop ──────────────────────────────────────────────────
 function copLoop(cop)
     local shootCD   = 0
     local rotateT   = math.random(Config.COP_ROTATE_MIN, Config.COP_ROTATE_MAX)
@@ -301,84 +195,113 @@ function copLoop(cop)
 
     while cop.alive do
         task.wait(0.05)
+
+        -- Safety check
         if not cop.alive or not cop.model or not cop.model.Parent then break end
 
-        local torsoPos = cop.model.Torso.Position
-        shootCD = math.max(0, shootCD - 0.05)
+        local ok, err = pcall(function()
+            local torsoPos = cop.torso.Position
+            shootCD = math.max(0, shootCD - 0.05)
 
-        -- Find nearest player
-        local nearest, nearDist, nearHRP = nil, math.huge, nil
-        for _, pl in ipairs(Players:GetPlayers()) do
-            if pl.Character then
-                local hrp = pl.Character:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    local d = (torsoPos - hrp.Position).Magnitude
-                    if d < nearDist then
-                        nearDist = d ; nearest = pl ; nearHRP = hrp
+            -- Find nearest player using simple distance (no raycast LOS)
+            local nearest, nearDist, nearHRP = nil, math.huge, nil
+            for _, pl in ipairs(Players:GetPlayers()) do
+                if pl.Character then
+                    local hrp = pl.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local d = (torsoPos - hrp.Position).Magnitude
+                        if d < nearDist then
+                            nearDist = d ; nearest = pl ; nearHRP = hrp
+                        end
                     end
                 end
             end
-        end
 
-        local detected = nearest
-            and nearDist <= Config.COP_DETECT_RANGE
-            and hasLOS(torsoPos, nearHRP.Position)
+            -- Detect if player is within range
+            local detected = nearest ~= nil and nearDist <= Config.COP_DETECT_RANGE
 
-        if detected then
-            -- CHASE
-            local tgt = Vector3.new(nearHRP.Position.X, torsoPos.Y, nearHRP.Position.Z)
-            local dir = tgt - torsoPos
-            if dir.Magnitude > 3 then
-                local step = Config.COP_CHASE_SPEED * 0.05
-                local newPos = torsoPos + dir.Unit * math.min(step, dir.Magnitude - 3)
-                cop.model.Torso.CFrame = CFrame.lookAt(newPos, Vector3.new(tgt.X, newPos.Y, tgt.Z))
-            end
-            if shootCD <= 0 and nearDist <= Config.COP_SHOOT_RANGE then
-                shootPlayer(cop, nearest)
-                shootCD = Config.COP_FIRE_RATE
-            end
-            rotateT = math.random(Config.COP_ROTATE_MIN, Config.COP_ROTATE_MAX)
-        else
-            -- PATROL
-            local dir = patrolTgt - torsoPos
-            if dir.Magnitude < 2 then
-                rotateT = rotateT - 1
-                if rotateT <= 0 then
-                    local conns = Config.CAVES[cop.caveId].connections
-                    cop.caveId = conns[math.random(1, #conns)]
-                    rotateT    = math.random(Config.COP_ROTATE_MIN, Config.COP_ROTATE_MAX)
+            if detected then
+                -- ── CHASE ─────────────────────────────────────────────
+                local tgt    = Vector3.new(nearHRP.Position.X, torsoPos.Y, nearHRP.Position.Z)
+                local dir    = tgt - torsoPos
+                local newPos = torsoPos
+
+                if dir.Magnitude > 1.5 then
+                    local step = Config.COP_CHASE_SPEED * 0.05
+                    newPos = torsoPos + dir.Unit * math.min(step, dir.Magnitude - 1.5)
                 end
-                patrolTgt = patrolPoint(cop.caveId)
+
+                moveCop(cop, makeCF(newPos, tgt - newPos))
+
+                if shootCD <= 0 and nearDist <= Config.COP_SHOOT_RANGE then
+                    shootPlayer(cop, nearest)
+                    shootCD = Config.COP_FIRE_RATE
+                end
+
+                -- Reset rotate timer so cop doesn't leave cave while chasing
+                rotateT = math.random(Config.COP_ROTATE_MIN, Config.COP_ROTATE_MAX)
+
             else
-                local step   = Config.COP_SPEED * 0.05
-                local newPos = torsoPos + dir.Unit * math.min(step, dir.Magnitude)
-                cop.model.Torso.CFrame = CFrame.lookAt(newPos, Vector3.new(patrolTgt.X, newPos.Y, patrolTgt.Z))
+                -- ── PATROL ────────────────────────────────────────────
+                local dir = patrolTgt - torsoPos
+
+                if dir.Magnitude < 2 then
+                    -- Reached waypoint — pick new one or rotate cave
+                    rotateT = rotateT - 2
+                    if rotateT <= 0 then
+                        local conns = Config.CAVES[cop.caveId].connections
+                        cop.caveId  = conns[math.random(1, #conns)]
+                        rotateT     = math.random(Config.COP_ROTATE_MIN, Config.COP_ROTATE_MAX)
+                    end
+                    patrolTgt = patrolPoint(cop.caveId)
+                else
+                    local step   = Config.COP_SPEED * 0.05
+                    local newPos = torsoPos + dir.Unit * math.min(step, dir.Magnitude)
+                    moveCop(cop, makeCF(newPos, dir))
+                end
             end
+        end)
+
+        if not ok then
+            warn("[CopManager] loop error: " .. tostring(err))
         end
     end
 end
 
--- ── Handle player shooting cops ───────────────────────────────────────
+-- ── Player shoots — proximity + angle check (no wall blockage) ────────
 RS:WaitForChild("RE_ShootWeapon").OnServerEvent:Connect(function(player, origin, direction, tier)
     local weaponData = Config.WEAPONS[tier]
     if not weaponData then return end
     local wVal = player:FindFirstChild("WeaponTier")
-    if not wVal or wVal.Value < tier then return end
+    if not wVal or wVal.Value < 1 then return end
 
-    local params = RaycastParams.new()
-    params.FilterDescendantsInstances = { player.Character }
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    local result = workspace:Raycast(origin, direction * weaponData.range, params)
-    if not result then return end
+    -- Find best cop: closest one that is roughly in the shot direction
+    local bestCop, bestScore = nil, -1
 
-    local hitModel = result.Instance and result.Instance:FindFirstAncestorOfClass("Model")
-    if hitModel and hitModel.Name == "Cop" then
-        for _, cop in ipairs(AllCops) do
-            if cop.model == hitModel then
-                damageCop(cop, weaponData.damage)
-                break
+    for _, cop in ipairs(AllCops) do
+        if cop.alive and cop.model and cop.model.Parent then
+            local copPos = cop.torso.Position
+            local toCop  = copPos - origin
+            local dist   = toCop.Magnitude
+
+            if dist <= weaponData.range then
+                -- Dot product: 1 = perfect aim, 0 = 90 degrees off
+                local dot = toCop.Unit:Dot(direction.Unit)
+                if dot > 0.5 then  -- within ~60 degree cone
+                    local score = dot - (dist / weaponData.range) * 0.3
+                    if score > bestScore then
+                        bestScore = score
+                        bestCop   = cop
+                    end
+                end
             end
         end
+    end
+
+    if bestCop then
+        damageCop(bestCop, weaponData.damage)
+        -- Visual flash at cop position
+        RE_Flash:FireAllClients(bestCop.torso.Position)
     end
 end)
 
@@ -388,10 +311,11 @@ for caveId, data in pairs(Config.CAVES) do
         task.wait(0.15)
         local c  = data.center
         local sp = Vector3.new(c.X + math.random(-20,20), FY, c.Z + math.random(-20,20))
-        local cop = { model=makeCopModel(sp), caveId=caveId, alive=true, hp=COP_MAX_HP }
+        local m, p, t = makeCopModel(sp)
+        local cop = { model=m, parts=p, torso=t, caveId=caveId, alive=true, hp=COP_MAX_HP }
         table.insert(AllCops, cop)
         task.spawn(copLoop, cop)
     end
 end
 
-print("[CopManager] Police officers spawned with full uniforms")
+print("[CopManager] Cops spawned — patrol, chase and shooting active")

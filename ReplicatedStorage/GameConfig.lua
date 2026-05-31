@@ -42,9 +42,9 @@ Config.COP_REGEN_TIME    = 30   -- seconds before a killed cop respawns
 
 -- ── Weapon tiers ───────────────────────────────────────────────────────
 Config.WEAPONS = {
-    [1] = { name="Pistol",  damage=20, range=40, fireRate=1.1 },
-    [2] = { name="Shotgun", damage=50, range=28, fireRate=0.7 },
-    [3] = { name="Rifle",   damage=75, range=80, fireRate=0.35 },
+    [1] = { name="Pistol",  damage=20, range=70,  fireRate=1.1 },
+    [2] = { name="Shotgun", damage=50, range=55,  fireRate=0.7 },
+    [3] = { name="Rifle",   damage=75, range=120, fireRate=0.35 },
 }
 
 -- ── Chest / item settings ──────────────────────────────────────────────
