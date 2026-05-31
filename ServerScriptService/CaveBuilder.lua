@@ -300,7 +300,7 @@ local function buildCave(id)
     end
 end
 
--- ── Build tunnel corridor ─────────────────────────────────────────────
+-- ── Build tunnel corridor with nooks ─────────────────────────────────
 local builtTunnels = {}
 local function buildTunnel(idA, idB)
     local key = math.min(idA,idB) .. "_" .. math.max(idA,idB)
@@ -311,26 +311,100 @@ local function buildTunnel(idA, idB)
     local bPos = Config.CAVES[idB].center
     local midX = (aPos.X + bPos.X) / 2
     local midZ = (aPos.Z + bPos.Z) / 2
-    local tunnelLen = SP - W
+    local tunnelLen = SP - W  -- 70 studs
 
     local model = Instance.new("Model")
     model.Name = ("Tunnel_%d_%d"):format(math.min(idA,idB), math.max(idA,idB))
     model.Parent = CaveFolder
 
+    -- Nook dimensions
+    local NOOK_W = 10                    -- opening width (studs)
+    local NOOK_D = 6                     -- depth beyond outer wall face
+    local PAR_H  = 4                     -- parapet height (cover barrier)
+    local halfN  = NOOK_W / 2            -- = 5
+    local segLen = (tunnelLen - NOOK_W) / 2  -- each wall segment beside nook = 30
+    local nDT    = NOOK_D + WT           -- total nook depth coverage = 10
+
     local isEW = math.abs(aPos.X - bPos.X) >= math.abs(aPos.Z - bPos.Z)
+
     if isEW then
-        p(model, Vector3.new(tunnelLen, WT, TW),       CFrame.new(midX, FLOOR_CY, midZ), COL_DIRT, MAT_GROUND).Name = "Floor"
-        p(model, Vector3.new(tunnelLen, WT, TW),       CFrame.new(midX, CEIL_CY,  midZ), COL_ROCK, MAT_SLATE).Name = "Ceiling"
-        p(model, Vector3.new(tunnelLen, H, WT),        CFrame.new(midX, H/2+2, midZ - TW/2 - WT/2), COL_ROCK, MAT_SLATE).Name = "Wall"
-        p(model, Vector3.new(tunnelLen, H, WT),        CFrame.new(midX, H/2+2, midZ + TW/2 + WT/2), COL_ROCK, MAT_SLATE).Name = "Wall"
-        -- Torch in tunnel center
-        makeTorch(model, Vector3.new(midX, FY+5, midZ - TW/2), Vector3.new(0,0,1))
+        -- Shared floor + ceiling
+        p(model, Vector3.new(tunnelLen, WT, TW), CFrame.new(midX, FLOOR_CY, midZ), COL_DIRT, MAT_GROUND).Name = "Floor"
+        p(model, Vector3.new(tunnelLen, WT, TW), CFrame.new(midX, CEIL_CY,  midZ), COL_ROCK, MAT_SLATE).Name  = "Ceiling"
+
+        -- ── North wall + nook ─────────────────────────────────────────
+        local nInZ   = midZ - TW/2                 -- inner face = midZ-10
+        local nCenZ  = nInZ - WT/2                 -- wall center = midZ-12
+        local nNookZ = nInZ - nDT/2                -- nook cover center = midZ-15
+        local nBackZ = nInZ - nDT - WT/2           -- back wall center = midZ-22
+
+        -- Wall segments either side of nook gap
+        p(model, Vector3.new(segLen, H, WT), CFrame.new(midX - halfN - segLen/2, H/2+2, nCenZ), COL_ROCK, MAT_SLATE).Name = "Wall"
+        p(model, Vector3.new(segLen, H, WT), CFrame.new(midX + halfN + segLen/2, H/2+2, nCenZ), COL_ROCK, MAT_SLATE).Name = "Wall"
+        -- Nook side walls
+        p(model, Vector3.new(WT, H, nDT), CFrame.new(midX - halfN - WT/2, H/2+2, nNookZ), COL_ROCK, MAT_SLATE).Name = "NookSide"
+        p(model, Vector3.new(WT, H, nDT), CFrame.new(midX + halfN + WT/2, H/2+2, nNookZ), COL_ROCK, MAT_SLATE).Name = "NookSide"
+        -- Nook back wall
+        p(model, Vector3.new(NOOK_W + WT*2, H, WT), CFrame.new(midX, H/2+2, nBackZ), COL_ROCK, MAT_SLATE).Name = "NookBack"
+        -- Nook floor + ceiling
+        p(model, Vector3.new(NOOK_W, WT, nDT), CFrame.new(midX, FLOOR_CY, nNookZ), COL_DIRT, MAT_GROUND).Name = "NookFloor"
+        p(model, Vector3.new(NOOK_W, WT, nDT), CFrame.new(midX, CEIL_CY,  nNookZ), COL_ROCK, MAT_SLATE).Name  = "NookCeiling"
+        -- Parapet: low stone barrier inside tunnel at nook entrance
+        p(model, Vector3.new(NOOK_W, PAR_H, WT), CFrame.new(midX, FY + PAR_H/2, nInZ + WT/2), COL_STONE, MAT_SLATE).Name = "NookParapet"
+        makeTorch(model, Vector3.new(midX, FY+5, nInZ - nDT), Vector3.new(0,0,1))
+
+        -- ── South wall + nook ─────────────────────────────────────────
+        local sInZ   = midZ + TW/2
+        local sCenZ  = sInZ + WT/2
+        local sNookZ = sInZ + nDT/2
+        local sBackZ = sInZ + nDT + WT/2
+
+        p(model, Vector3.new(segLen, H, WT), CFrame.new(midX - halfN - segLen/2, H/2+2, sCenZ), COL_ROCK, MAT_SLATE).Name = "Wall"
+        p(model, Vector3.new(segLen, H, WT), CFrame.new(midX + halfN + segLen/2, H/2+2, sCenZ), COL_ROCK, MAT_SLATE).Name = "Wall"
+        p(model, Vector3.new(WT, H, nDT), CFrame.new(midX - halfN - WT/2, H/2+2, sNookZ), COL_ROCK, MAT_SLATE).Name = "NookSide"
+        p(model, Vector3.new(WT, H, nDT), CFrame.new(midX + halfN + WT/2, H/2+2, sNookZ), COL_ROCK, MAT_SLATE).Name = "NookSide"
+        p(model, Vector3.new(NOOK_W + WT*2, H, WT), CFrame.new(midX, H/2+2, sBackZ), COL_ROCK, MAT_SLATE).Name = "NookBack"
+        p(model, Vector3.new(NOOK_W, WT, nDT), CFrame.new(midX, FLOOR_CY, sNookZ), COL_DIRT, MAT_GROUND).Name = "NookFloor"
+        p(model, Vector3.new(NOOK_W, WT, nDT), CFrame.new(midX, CEIL_CY,  sNookZ), COL_ROCK, MAT_SLATE).Name  = "NookCeiling"
+        p(model, Vector3.new(NOOK_W, PAR_H, WT), CFrame.new(midX, FY + PAR_H/2, sInZ - WT/2), COL_STONE, MAT_SLATE).Name = "NookParapet"
+        makeTorch(model, Vector3.new(midX, FY+5, sInZ + nDT), Vector3.new(0,0,-1))
+
     else
-        p(model, Vector3.new(TW, WT, tunnelLen),       CFrame.new(midX, FLOOR_CY, midZ), COL_DIRT, MAT_GROUND).Name = "Floor"
-        p(model, Vector3.new(TW, WT, tunnelLen),       CFrame.new(midX, CEIL_CY,  midZ), COL_ROCK, MAT_SLATE).Name = "Ceiling"
-        p(model, Vector3.new(WT, H, tunnelLen),        CFrame.new(midX - TW/2 - WT/2, H/2+2, midZ), COL_ROCK, MAT_SLATE).Name = "Wall"
-        p(model, Vector3.new(WT, H, tunnelLen),        CFrame.new(midX + TW/2 + WT/2, H/2+2, midZ), COL_ROCK, MAT_SLATE).Name = "Wall"
-        makeTorch(model, Vector3.new(midX - TW/2, FY+5, midZ), Vector3.new(1,0,0))
+        -- Shared floor + ceiling
+        p(model, Vector3.new(TW, WT, tunnelLen), CFrame.new(midX, FLOOR_CY, midZ), COL_DIRT, MAT_GROUND).Name = "Floor"
+        p(model, Vector3.new(TW, WT, tunnelLen), CFrame.new(midX, CEIL_CY,  midZ), COL_ROCK, MAT_SLATE).Name  = "Ceiling"
+
+        -- ── West wall + nook ──────────────────────────────────────────
+        local wInX   = midX - TW/2
+        local wCenX  = wInX - WT/2
+        local wNookX = wInX - nDT/2
+        local wBackX = wInX - nDT - WT/2
+
+        p(model, Vector3.new(WT, H, segLen), CFrame.new(wCenX, H/2+2, midZ - halfN - segLen/2), COL_ROCK, MAT_SLATE).Name = "Wall"
+        p(model, Vector3.new(WT, H, segLen), CFrame.new(wCenX, H/2+2, midZ + halfN + segLen/2), COL_ROCK, MAT_SLATE).Name = "Wall"
+        p(model, Vector3.new(nDT, H, WT), CFrame.new(wNookX, H/2+2, midZ - halfN - WT/2), COL_ROCK, MAT_SLATE).Name = "NookSide"
+        p(model, Vector3.new(nDT, H, WT), CFrame.new(wNookX, H/2+2, midZ + halfN + WT/2), COL_ROCK, MAT_SLATE).Name = "NookSide"
+        p(model, Vector3.new(WT, H, NOOK_W + WT*2), CFrame.new(wBackX, H/2+2, midZ), COL_ROCK, MAT_SLATE).Name = "NookBack"
+        p(model, Vector3.new(nDT, WT, NOOK_W), CFrame.new(wNookX, FLOOR_CY, midZ), COL_DIRT, MAT_GROUND).Name = "NookFloor"
+        p(model, Vector3.new(nDT, WT, NOOK_W), CFrame.new(wNookX, CEIL_CY,  midZ), COL_ROCK, MAT_SLATE).Name  = "NookCeiling"
+        p(model, Vector3.new(WT, PAR_H, NOOK_W), CFrame.new(wInX + WT/2, FY + PAR_H/2, midZ), COL_STONE, MAT_SLATE).Name = "NookParapet"
+        makeTorch(model, Vector3.new(wInX - nDT, FY+5, midZ), Vector3.new(1,0,0))
+
+        -- ── East wall + nook ──────────────────────────────────────────
+        local eInX   = midX + TW/2
+        local eCenX  = eInX + WT/2
+        local eNookX = eInX + nDT/2
+        local eBackX = eInX + nDT + WT/2
+
+        p(model, Vector3.new(WT, H, segLen), CFrame.new(eCenX, H/2+2, midZ - halfN - segLen/2), COL_ROCK, MAT_SLATE).Name = "Wall"
+        p(model, Vector3.new(WT, H, segLen), CFrame.new(eCenX, H/2+2, midZ + halfN + segLen/2), COL_ROCK, MAT_SLATE).Name = "Wall"
+        p(model, Vector3.new(nDT, H, WT), CFrame.new(eNookX, H/2+2, midZ - halfN - WT/2), COL_ROCK, MAT_SLATE).Name = "NookSide"
+        p(model, Vector3.new(nDT, H, WT), CFrame.new(eNookX, H/2+2, midZ + halfN + WT/2), COL_ROCK, MAT_SLATE).Name = "NookSide"
+        p(model, Vector3.new(WT, H, NOOK_W + WT*2), CFrame.new(eBackX, H/2+2, midZ), COL_ROCK, MAT_SLATE).Name = "NookBack"
+        p(model, Vector3.new(nDT, WT, NOOK_W), CFrame.new(eNookX, FLOOR_CY, midZ), COL_DIRT, MAT_GROUND).Name = "NookFloor"
+        p(model, Vector3.new(nDT, WT, NOOK_W), CFrame.new(eNookX, CEIL_CY,  midZ), COL_ROCK, MAT_SLATE).Name  = "NookCeiling"
+        p(model, Vector3.new(WT, PAR_H, NOOK_W), CFrame.new(eInX - WT/2, FY + PAR_H/2, midZ), COL_STONE, MAT_SLATE).Name = "NookParapet"
+        makeTorch(model, Vector3.new(eInX + nDT, FY+5, midZ), Vector3.new(-1,0,0))
     end
 end
 
