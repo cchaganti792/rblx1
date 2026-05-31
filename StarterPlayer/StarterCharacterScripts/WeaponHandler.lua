@@ -132,4 +132,21 @@ RunS.RenderStepped:Connect(function()
     end
 end)
 
-print("[WeaponHandler] Ready — click to shoot")
+-- ── Sprint (hold Left Shift) ──────────────────────────────────────────
+local WALK_SPEED   = 16
+local SPRINT_SPEED = 28
+
+UIS.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.LeftShift then
+        humanoid.WalkSpeed = SPRINT_SPEED
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.LeftShift then
+        humanoid.WalkSpeed = WALK_SPEED
+    end
+end)
+
+print("[WeaponHandler] Ready — click to shoot, hold Shift to sprint")
