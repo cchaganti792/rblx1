@@ -105,7 +105,7 @@ end
 local function hookRespawn(player)
 	player.CharacterAdded:Connect(function()
 		if playerHasTorch[player] then
-			task.wait(1.5)   -- let character finish loading
+			task.wait(1.5)
 			RE_Torch:FireClient(player)
 		end
 	end)
