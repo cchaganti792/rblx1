@@ -10,7 +10,8 @@ local player    = Players.LocalPlayer
 local character = script.Parent
 local hrp       = character:WaitForChild("HumanoidRootPart")
 
-local RE_Torch  = RS:WaitForChild("RE_GiveTorch")
+local RE_Torch      = RS:WaitForChild("RE_GiveTorch")
+local RE_TorchState = RS:WaitForChild("RE_TorchState")
 
 local torchLight = nil
 local torchFlame = nil
@@ -24,14 +25,19 @@ UIS.InputBegan:Connect(function(input, gameProcessed)
 		torchOn = not torchOn
 		torchLight.Enabled      = torchOn
 		torchFlame.Transparency = torchOn and 0 or 0.85
+		RE_TorchState:FireServer(torchOn)   -- tell server: cops can/cannot see player
 	end
 end)
+
+-- Tell server torch is off until player picks one up
+RE_TorchState:FireServer(false)
 
 RE_Torch.OnClientEvent:Connect(function()
 	-- Clean up any old torch from a previous life
 	local old = character:FindFirstChild("TorchHandle")
 	if old then old:Destroy() end
 	torchOn = true
+	RE_TorchState:FireServer(true)   -- torch just equipped and on
 
 	-- ── Torch handle ──────────────────────────────────────────────────
 	local handle = Instance.new("Part")
