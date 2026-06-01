@@ -94,9 +94,7 @@ local function makeTorch(parent, position, facingDir)
 	local flame = p(parent, Vector3.new(0.6, 0.8, 0.6), CFrame.new(flamePos), COL_FLAME, MAT_NEON, 0, false)
 	flame.Name  = "TorchFlame"
 	flame.Shape = Enum.PartType.Ball
-	local light = Instance.new("PointLight")
-	light.Brightness = 1.2 ; light.Range = 16 ; light.Color = Color3.fromRGB(255, 140, 40)
-	light.Parent = flame
+	-- No PointLight on wall torches — player must use their own torch to see
 end
 
 -- ── Wall torches ──────────────────────────────────────────────────────
