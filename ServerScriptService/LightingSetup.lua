@@ -4,13 +4,15 @@
 
 local Lighting = game:GetService("Lighting")
 
-Lighting.Ambient        = Color3.fromRGB(0, 0, 0)
-Lighting.OutdoorAmbient = Color3.fromRGB(0, 0, 0)
-Lighting.Brightness     = 0
-Lighting.GlobalShadows  = true
-Lighting.FogColor       = Color3.fromRGB(0, 0, 0)
-Lighting.FogStart       = 15
-Lighting.FogEnd         = 100
+Lighting.Ambient                  = Color3.fromRGB(0, 0, 0)
+Lighting.OutdoorAmbient           = Color3.fromRGB(0, 0, 0)
+Lighting.Brightness               = 0
+Lighting.EnvironmentDiffuseScale  = 0
+Lighting.EnvironmentSpecularScale = 0
+Lighting.GlobalShadows            = true
+Lighting.FogColor                 = Color3.fromRGB(0, 0, 0)
+Lighting.FogStart                 = 15
+Lighting.FogEnd                   = 100
 
 -- Remove sky box so there is no sky ambient contribution
 local sky = Lighting:FindFirstChildOfClass("Sky")

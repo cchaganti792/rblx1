@@ -91,10 +91,9 @@ local function makeTorch(parent, position, facingDir)
 		CFrame.new(stickPos) * CFrame.Angles(0, 0, math.rad(15) * (facingDir.X ~= 0 and facingDir.X or facingDir.Z)),
 		COL_WOOD, MAT_WOOD, 0, false).Name = "TorchStick"
 	local flamePos = stickPos + Vector3.new(0, 1, 0)
-	local flame = p(parent, Vector3.new(0.6, 0.8, 0.6), CFrame.new(flamePos), COL_FLAME, MAT_NEON, 0, false)
+	local flame = p(parent, Vector3.new(0.6, 0.8, 0.6), CFrame.new(flamePos), COL_FLAME, MAT_SMOOTH, 0, false)
 	flame.Name  = "TorchFlame"
 	flame.Shape = Enum.PartType.Ball
-	-- No PointLight on wall torches — player must use their own torch to see
 end
 
 -- ── Wall torches ──────────────────────────────────────────────────────
@@ -173,13 +172,6 @@ local function makeMushroom(model, pos)
 		end
 	end
 
-	-- Bioluminescent glow on some mushrooms
-	if math.random() > 0.6 then
-		local gl = Instance.new("PointLight")
-		gl.Brightness = 0.6 ; gl.Range = 8
-		gl.Color = isRed and Color3.fromRGB(255,80,80) or Color3.fromRGB(200,220,255)
-		gl.Parent = cap
-	end
 end
 
 -- ── Moss patch: cluster of tiny green spheres — looks like real moss ──
@@ -243,7 +235,7 @@ end
 
 -- ── Ore cluster: sphere nodules embedded in wall ─────────────────────
 -- Spheres look like actual mineral deposits, not flat patches
-local function makeOreCluster(model, wallPos, col, mat, glow, glowColor)
+local function makeOreCluster(model, wallPos, col, mat)
 	local n = math.random(5, 8)
 	for i = 1, n do
 		local sz = math.random(18, 52) / 100
@@ -254,11 +246,6 @@ local function makeOreCluster(model, wallPos, col, mat, glow, glowColor)
 				wallPos.Z + math.random(-8, 4)/100),
 			col, mat, false)
 		b.Name = "Ore"
-		if glow then
-			local gl = Instance.new("PointLight")
-			gl.Brightness = 1.2 ; gl.Range = 7 ; gl.Color = glowColor
-			gl.Parent = b
-		end
 	end
 end
 
@@ -274,21 +261,20 @@ local function placeOreVeins(model, cx, cz, isDiamond)
 
 	-- Coal seams: dark sphere clusters in wall
 	for i = 1, 6 do
-		makeOreCluster(model, wpos(0.5), COL_COAL, MAT_SMOOTH, false, nil)
+		makeOreCluster(model, wpos(0.5), COL_COAL, MAT_SMOOTH)
 	end
 	-- Iron ore: rust-coloured sphere clusters
 	for i = 1, 4 do
-		makeOreCluster(model, wpos(0.6), COL_IRON, MAT_ROCK, false, nil)
+		makeOreCluster(model, wpos(0.6), COL_IRON, MAT_ROCK)
 	end
 	-- Quartz: white streaks (small tight sphere cluster)
 	for i = 1, 3 do
-		makeOreCluster(model, wpos(0.5), COL_QUARTZ, MAT_MARBLE, false, nil)
+		makeOreCluster(model, wpos(0.5), COL_QUARTZ, MAT_MARBLE)
 	end
-	-- Diamond veins: glowing cyan sphere clusters
+	-- Diamond veins: cyan glass sphere clusters (visible in torch light)
 	local dCount = isDiamond and 12 or 3
 	for i = 1, dCount do
-		makeOreCluster(model, wpos(0.4), COL_DIAM, MAT_NEON, true,
-			Color3.fromRGB(0, 200, 255))
+		makeOreCluster(model, wpos(0.4), COL_DIAM, MAT_GLASS)
 	end
 
 	-- Crystal spikes on floor (diamond cave): tapered 4-segment columns
@@ -306,13 +292,8 @@ local function placeOreVeins(model, cx, cz, isDiamond)
 				local diam  = widths[s]
 				local seg = p(model, Vector3.new(diam, segH, diam),
 					CFrame.new(crx, yC, crz) * angle,
-					COL_DIAM, MAT_NEON, 0, false)
+					COL_DIAM, MAT_GLASS, 0, false)
 				seg.Name = "Crystal"
-				if s == 1 then
-					local gl = Instance.new("PointLight")
-					gl.Brightness = 1.5 ; gl.Range = 10 ; gl.Color = Color3.fromRGB(0,200,255)
-					gl.Parent = seg
-				end
 			end
 		end
 	end
@@ -561,12 +542,9 @@ local function buildCave(id)
 			local angle = (i / Config.DIAMONDS_IN_CAVE) * math.pi * 2
 			local gem = p(model, Vector3.new(2, 3, 2),
 				CFrame.new(cx + math.cos(angle)*10, FY + 2.5, cz + math.sin(angle)*10),
-				COL_DIAM, MAT_NEON)
+				COL_DIAM, MAT_GLASS)
 			gem.Name  = "Diamond"
 			gem.Shape = Enum.PartType.Ball
-			local glow = Instance.new("PointLight")
-			glow.Brightness = 2 ; glow.Range = 12 ; glow.Color = Color3.fromRGB(0,200,255)
-			glow.Parent = gem
 			local pp = Instance.new("ProximityPrompt")
 			pp.ActionText = "Take Diamond"
 			pp.KeyboardKeyCode = Enum.KeyCode.E
@@ -704,7 +682,7 @@ local function buildExitGate()
 	for i = -1, 1 do
 		local bar = p(model, Vector3.new(2, barH, 2),
 			CFrame.new(cx + i*6, FY + barH/2, gateZ),
-			BrickColor.new("Bright red"), MAT_NEON)
+			BrickColor.new("Bright red"), MAT_SMOOTH)
 		bar.Name = "GateBar"
 	end
 
