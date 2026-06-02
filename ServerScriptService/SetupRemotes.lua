@@ -12,6 +12,7 @@ local names = {
     "RE_UpdateHUD",      -- Server → Client  : number health, number diamonds, number caveId
     "RE_ShootWeapon",    -- Client → Server  : Vector3 origin, Vector3 direction, number tier
     "RE_CopFlash",       -- Server → Client  : Vector3 copPos (muzzle flash effect)
+    "RE_TorchState",     -- Client → Server  : bool torchOn
 }
 
 for _, name in ipairs(names) do
