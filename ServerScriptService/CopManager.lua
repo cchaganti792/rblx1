@@ -34,9 +34,9 @@ local AllCops    = {}
 local COP_MAX_HP = 100
 
 -- Torch state: nil/false = torch off (cops blind), true = torch on (cops can see)
-local playerTorchOn  = {}
--- Cave timer: [player] = { caveId=number, entryTick=number }
-local playerCaveTime = {}
+local playerTorchOn      = {}
+-- Timestamp when torch was last turned off; nil if torch is currently on
+local playerTorchOffSince = {}
 
 -- ── Build cop CFrame from position + look direction ───────────────────
 local function makeCF(pos, lookDir)
@@ -225,21 +225,14 @@ local function damageCop(cop, dmg)
     end
 end
 
--- ── Find which cave a position is closest to ─────────────────────────
-local function getPlayerCave(hrpPos)
-    local best, bestDist = nil, math.huge
-    for id, data in pairs(Config.CAVES) do
-        local d = Vector3.new(data.center.X, hrpPos.Y, data.center.Z) - hrpPos
-        if d.Magnitude < bestDist then
-            bestDist = d.Magnitude ; best = id
-        end
-    end
-    return best
-end
-
 -- ── Torch toggle from client ──────────────────────────────────────────
 RE_TorchState.OnServerEvent:Connect(function(player, isOn)
     playerTorchOn[player] = isOn == true
+    if isOn then
+        playerTorchOffSince[player] = nil   -- torch on → reset stealth clock
+    else
+        playerTorchOffSince[player] = tick() -- torch off → start 10-second window
+    end
 end)
 
 -- ── Main cop AI loop ──────────────────────────────────────────────────
@@ -272,24 +265,15 @@ function copLoop(cop)
                 end
             end
 
-            -- Track how long nearest player has been in the same cave
-            if nearest and nearHRP then
-                local playerCave = getPlayerCave(nearHRP.Position)
-                local ct = playerCaveTime[nearest]
-                if not ct or ct.caveId ~= playerCave then
-                    playerCaveTime[nearest] = { caveId = playerCave, entryTick = tick() }
-                end
-            end
-
             -- Detect player when:
-            --   • torch is ON  (player is visible)
-            --   • OR player has been in this cave ≥ 30 s (noise/presence detected)
+            --   • torch is ON  (player is lit up and visible)
+            --   • OR torch has been OFF for ≥ 10 s (cops hear/sense presence)
             local canSee = false
-            if nearest and nearHRP then
-                local torchOn    = playerTorchOn[nearest] == true
-                local ct         = playerCaveTime[nearest]
-                local timeInCave = ct and (tick() - ct.entryTick) or 0
-                canSee = torchOn or timeInCave >= 30
+            if nearest then
+                local torchOn     = playerTorchOn[nearest] == true
+                local offSince    = playerTorchOffSince[nearest]
+                local timeInDark  = offSince and (tick() - offSince) or 0
+                canSee = torchOn or timeInDark >= 10
             end
             local detected = nearest ~= nil
                 and nearDist <= Config.COP_DETECT_RANGE
@@ -390,8 +374,8 @@ for caveId, data in pairs(Config.CAVES) do
 end
 
 Players.PlayerRemoving:Connect(function(player)
-    playerTorchOn[player]  = nil
-    playerCaveTime[player] = nil
+    playerTorchOn[player]       = nil
+    playerTorchOffSince[player] = nil
 end)
 
 print("[CopManager] Cops spawned — patrol, chase and shooting active")
