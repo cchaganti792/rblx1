@@ -33,10 +33,10 @@ local TORSO_Y = FY + 3.5   -- torso height so boots sit on floor
 local AllCops    = {}
 local COP_MAX_HP = 100
 
--- Torch state: nil/false = torch off (cops blind), true = torch on (cops can see)
-local playerTorchOn      = {}
--- Timestamp when torch was last turned off; nil if torch is currently on
-local playerTorchOffSince = {}
+local playerTorchOn      = {}   -- true = torch on
+local playerDarkAccum    = {}   -- total seconds spent in dark this life
+local playerDarkStart    = {}   -- tick() when current dark period began
+local playerAlerted      = {}   -- true once 10s dark threshold crossed (no reset until respawn)
 
 -- ── Build cop CFrame from position + look direction ───────────────────
 local function makeCF(pos, lookDir)
@@ -229,11 +229,37 @@ end
 RE_TorchState.OnServerEvent:Connect(function(player, isOn)
     playerTorchOn[player] = isOn == true
     if isOn then
-        playerTorchOffSince[player] = nil   -- torch on → reset stealth clock
+        -- Torch turned ON: bank however long they were just in the dark
+        if playerDarkStart[player] then
+            playerDarkAccum[player] = (playerDarkAccum[player] or 0)
+                + (tick() - playerDarkStart[player])
+            playerDarkStart[player] = nil
+        end
     else
-        playerTorchOffSince[player] = tick() -- torch off → start 10-second window
+        -- Torch turned OFF: start a new dark period (only if not already tracking)
+        if not playerDarkStart[player] then
+            playerDarkStart[player] = tick()
+        end
     end
 end)
+
+-- ── Reset detection state on each respawn ────────────────────────────
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        playerAlerted[player]   = false
+        playerDarkAccum[player] = 0
+        playerDarkStart[player] = nil
+        playerTorchOn[player]   = false
+    end)
+end)
+for _, player in ipairs(Players:GetPlayers()) do
+    player.CharacterAdded:Connect(function()
+        playerAlerted[player]   = false
+        playerDarkAccum[player] = 0
+        playerDarkStart[player] = nil
+        playerTorchOn[player]   = false
+    end)
+end
 
 -- ── Main cop AI loop ──────────────────────────────────────────────────
 function copLoop(cop)
@@ -266,14 +292,23 @@ function copLoop(cop)
             end
 
             -- Detect player when:
-            --   • torch is ON  (player is lit up and visible)
-            --   • OR torch has been OFF for ≥ 10 s (cops hear/sense presence)
+            --   • torch is ON (player is visible), OR
+            --   • cumulative dark time ≥ 10 s (permanent alert for this life)
             local canSee = false
             if nearest then
-                local torchOn     = playerTorchOn[nearest] == true
-                local offSince    = playerTorchOffSince[nearest]
-                local timeInDark  = offSince and (tick() - offSince) or 0
-                canSee = torchOn or timeInDark >= 10
+                if playerAlerted[nearest] then
+                    canSee = true
+                elseif playerTorchOn[nearest] == true then
+                    canSee = true
+                else
+                    local accum   = playerDarkAccum[nearest] or 0
+                    local curDark = playerDarkStart[nearest]
+                        and (tick() - playerDarkStart[nearest]) or 0
+                    if accum + curDark >= 10 then
+                        playerAlerted[nearest] = true  -- lock in permanently
+                        canSee = true
+                    end
+                end
             end
             local detected = nearest ~= nil
                 and nearDist <= Config.COP_DETECT_RANGE
@@ -374,8 +409,10 @@ for caveId, data in pairs(Config.CAVES) do
 end
 
 Players.PlayerRemoving:Connect(function(player)
-    playerTorchOn[player]       = nil
-    playerTorchOffSince[player] = nil
+    playerTorchOn[player]   = nil
+    playerDarkAccum[player] = nil
+    playerDarkStart[player] = nil
+    playerAlerted[player]   = nil
 end)
 
 print("[CopManager] Cops spawned — patrol, chase and shooting active")
