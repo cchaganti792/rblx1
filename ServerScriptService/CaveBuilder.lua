@@ -25,7 +25,6 @@ local MAT_GROUND = Enum.Material.Ground
 local MAT_WOOD   = Enum.Material.Wood
 local MAT_NEON   = Enum.Material.Neon
 local MAT_SLATE  = Enum.Material.Slate
-local MAT_GRASS  = Enum.Material.Grass
 local MAT_GLASS  = Enum.Material.Glass
 local MAT_SMOOTH = Enum.Material.SmoothPlastic
 local MAT_MARBLE = Enum.Material.Marble
@@ -36,8 +35,6 @@ local COL_WOOD   = BrickColor.new("Reddish brown")
 local COL_FLAME  = BrickColor.new("Bright orange")
 local COL_STONE  = BrickColor.new("Medium stone grey")
 local COL_DIAM   = BrickColor.new("Cyan")
-local COL_MOSS   = BrickColor.new("Sand green")
-local COL_LEAF   = BrickColor.new("Bright green")
 local COL_COAL   = BrickColor.new("Really black")
 local COL_IRON   = BrickColor.new("Rust")
 local COL_QUARTZ = BrickColor.new("White")
@@ -58,20 +55,6 @@ local function p(parent, sz, cf, col, mat, transp, nocol)
 	part.CanCollide   = not nocol
 	part.CastShadow   = false
 	part.Parent       = parent
-	return part
-end
-
--- ── WedgePart factory (triangular prism — used for leaf shapes) ───────
-local function w(parent, sz, cf, col, mat)
-	local part = Instance.new("WedgePart")
-	part.Size        = sz
-	part.CFrame      = cf
-	part.Anchored    = true
-	part.BrickColor  = col or COL_LEAF
-	part.Material    = mat or MAT_GRASS
-	part.CanCollide  = false
-	part.CastShadow  = false
-	part.Parent      = parent
 	return part
 end
 
@@ -107,130 +90,6 @@ local function placeTorches(model, cx, cz)
 	makeTorch(model, Vector3.new(cx - HD + 1, y, cz + 22), Vector3.new(1,0,0))
 	makeTorch(model, Vector3.new(cx + HD - 1, y, cz - 22), Vector3.new(-1,0,0))
 	makeTorch(model, Vector3.new(cx + HD - 1, y, cz + 22), Vector3.new(-1,0,0))
-end
-
--- ── Fern: real wedge-leaf fronds radiating from a stem ────────────────
--- WedgePart has a triangular cross-section so each frond is actually
--- leaf-shaped (wide base tapering to a pointed tip) not a flat block.
-local function makeFern(model, pos)
-	-- Thin woody stem
-	p(model, Vector3.new(0.18, 2.6, 0.18),
-		CFrame.new(pos.X, pos.Y + 1.3, pos.Z),
-		BrickColor.new("Olive"), MAT_WOOD, 0, true).Name = "FernStem"
-
-	local frondCount = math.random(6, 9)
-	for i = 1, frondCount do
-		local yAngle  = (i / frondCount) * math.pi * 2 + math.random(-10,10)/100
-		local tilt    = math.rad(math.random(-50, -15))
-		local fLen    = math.random(14, 24) / 10
-		local fWid    = math.random(9, 16) / 10
-		local col     = math.random() > 0.45 and COL_LEAF or BrickColor.new("Olive")
-		-- WedgePart oriented: X=thin, Y=full height (tall side), Z=width
-		-- This creates a leaf shape: rectangular on front face, triangular on side face
-		w(model, Vector3.new(0.11, fLen, fWid),
-			CFrame.new(pos.X, pos.Y + 1.9, pos.Z)
-				* CFrame.Angles(tilt, yAngle, 0)
-				* CFrame.new(0, 0, -fLen * 0.38),
-			col, MAT_GRASS).Name = "FernFrond"
-	end
-
-	-- A few tiny leaf spheres clustered at stem base
-	for i = 1, 3 do
-		local s = math.random(18, 32) / 100
-		local b = ball(model, s,
-			Vector3.new(pos.X + math.random(-3,3)/10, pos.Y + s/2, pos.Z + math.random(-3,3)/10),
-			COL_LEAF, MAT_GRASS, true)
-		b.Name = "FernBase"
-	end
-end
-
--- ── Mushroom: proper cap + stem + gill detail ─────────────────────────
-local function makeMushroom(model, pos)
-	local sh   = math.random(10, 32) / 10
-	local capR = math.random(14, 30) / 10
-	local isRed = math.random() > 0.45
-	local capCol = isRed and BrickColor.new("Bright red") or BrickColor.new("White")
-
-	-- Stem
-	p(model, Vector3.new(0.45, sh, 0.45),
-		CFrame.new(pos.X, pos.Y + sh/2, pos.Z), BrickColor.new("Wheat"), MAT_SMOOTH, 0, true).Name = "ShroomStem"
-
-	-- Cap (sphere)
-	local cap = ball(model, capR,
-		Vector3.new(pos.X, pos.Y + sh + capR * 0.28, pos.Z), capCol, MAT_SMOOTH, true)
-	cap.Name = "ShroomCap"
-
-	-- White spots on cap
-	if isRed then
-		for i = 1, math.random(3, 5) do
-			local a  = (i / 5) * math.pi * 2
-			local r2 = capR * 0.45
-			local s  = ball(model, capR * 0.18,
-				Vector3.new(pos.X + math.cos(a)*r2, pos.Y + sh + capR * 0.55, pos.Z + math.sin(a)*r2),
-				BrickColor.new("White"), MAT_SMOOTH, true)
-			s.Name = "ShroomSpot"
-		end
-	end
-
-end
-
--- ── Moss patch: cluster of tiny green spheres — looks like real moss ──
-local function makeMossPatch(model, cx, cy, cz, radius)
-	local n = math.random(10, 18)
-	for i = 1, n do
-		local angle = math.random() * math.pi * 2
-		local dist  = math.random() * radius
-		local sz    = math.random(12, 28) / 100
-		local col   = math.random() > 0.5 and BrickColor.new("Bright green") or COL_MOSS
-		local b = ball(model, sz,
-			Vector3.new(cx + math.cos(angle)*dist, cy + sz*0.45, cz + math.sin(angle)*dist),
-			col, MAT_GRASS, true)
-		b.Name = "Moss"
-	end
-end
-
--- ── Wall moss: sphere-cluster patches stuck to cave walls ─────────────
-local function addWallMoss(model, cx, cz)
-	-- Floor moss patches
-	for i = 1, 6 do
-		makeMossPatch(model,
-			cx + math.random(-30, 30), FY,
-			cz + math.random(-30, 30),
-			math.random(8, 18) / 10)
-	end
-	-- Wall moss (very thin protrusion cluster on wall surface)
-	for i = 1, 8 do
-		local face = math.random(1, 4)
-		local n    = math.random(6, 12)
-		for j = 1, n do
-			local sz  = math.random(10, 22) / 100
-			local col = math.random() > 0.5 and COL_MOSS or BrickColor.new("Bright green")
-			local xOff = math.random(-6, 6) / 10
-			local yPos = FY + math.random(3, 70) / 10
-			local zOff = math.random(-6, 6) / 10
-			if face == 1 then
-				local b = ball(model, sz, Vector3.new(
-					cx + math.random(-28,28) + xOff, yPos,
-					cz - HW + sz*0.4 + zOff), col, MAT_GRASS, true)
-				b.Name = "WallMoss"
-			elseif face == 2 then
-				local b = ball(model, sz, Vector3.new(
-					cx + math.random(-28,28) + xOff, yPos,
-					cz + HW - sz*0.4 + zOff), col, MAT_GRASS, true)
-				b.Name = "WallMoss"
-			elseif face == 3 then
-				local b = ball(model, sz, Vector3.new(
-					cx - HD + sz*0.4 + xOff, yPos,
-					cz + math.random(-28,28) + zOff), col, MAT_GRASS, true)
-				b.Name = "WallMoss"
-			else
-				local b = ball(model, sz, Vector3.new(
-					cx + HD - sz*0.4 + xOff, yPos,
-					cz + math.random(-28,28) + zOff), col, MAT_GRASS, true)
-				b.Name = "WallMoss"
-			end
-		end
-	end
 end
 
 -- ── Ore cluster: sphere nodules embedded in wall ─────────────────────
@@ -438,20 +297,6 @@ local function addMineSupports(model, cx, cz)
 	end
 end
 
--- ── Flora: ferns + mushrooms scattered through cave ───────────────────
-local function addFlora(model, cx, cz)
-	for i = 1, 4 do
-		makeFern(model, Vector3.new(
-			cx + math.random(-30, 30), FY,
-			cz + math.random(-30, 30)))
-	end
-	for i = 1, 6 do
-		makeMushroom(model, Vector3.new(
-			cx + math.random(-32, 32), FY,
-			cz + math.random(-32, 32)))
-	end
-end
-
 -- ── Which sides have tunnel openings ─────────────────────────────────
 local function getOpenSides(caveId)
 	local data = Config.CAVES[caveId]
@@ -531,8 +376,6 @@ local function buildCave(id)
 	addCeiling(model, cx, cz)
 	addFloor(model, cx, cz)
 	placeTorches(model, cx, cz)
-	addWallMoss(model, cx, cz)
-	addFlora(model, cx, cz)
 	addMineSupports(model, cx, cz)
 	placeOreVeins(model, cx, cz, data.isDiamond)
 

@@ -8,6 +8,7 @@ local Players = game:GetService("Players")
 
 local Config  = require(RS:WaitForChild("GameConfig"))
 
+-- Create remotes if SetupRemotes hasn't run yet
 local function getRemote(name)
     local re = RS:FindFirstChild(name)
     if not re then
@@ -18,21 +19,48 @@ local function getRemote(name)
     return re
 end
 
-local RE_Take  = getRemote("RE_TakeDamage")
-local RE_Flash = getRemote("RE_CopFlash")
+local RE_Take = getRemote("RE_TakeDamage")
+local RE_Flash= getRemote("RE_CopFlash")
 
 print("[CopManager] Remotes ready — waiting 3s for world to load")
 task.wait(3)
 print("[CopManager] Starting cop spawn")
 
 local FY      = Config.FLOOR_Y
-local TORSO_Y = FY + 3.5
+local TORSO_Y = FY + 3.5   -- torso height so boots sit on floor
 
 local AllCops    = {}
 local COP_MAX_HP = 100
 
--- torch state: true = on (cop can see at full range), false/nil = dark (near-blind)
-local playerTorchOn = {}
+local STEALTH_DURATION = 10  -- seconds of invisibility after turning the torch off
+
+-- Per-player timestamp of when the torch was turned off (nil while torch is on).
+-- Player is invisible to cops for STEALTH_DURATION seconds after this moment.
+local torchOffAt = {}
+
+local function playerVisible(player)
+    local offAt = torchOffAt[player]
+    if not offAt then return true end                       -- torch on → visible
+    return (os.clock() - offAt) >= STEALTH_DURATION         -- stealth window expired → visible
+end
+
+-- Watch each player's TorchOn BoolValue and stamp the off-time
+local function hookTorch(player)
+    local function onChar(char)
+        local val = char:WaitForChild("TorchOn", 10)
+        if not val then return end
+        torchOffAt[player] = os.clock()  -- spawns with torch off → start stealth window
+        val:GetPropertyChangedSignal("Value"):Connect(function()
+            torchOffAt[player] = val.Value and nil or os.clock()
+        end)
+    end
+    if player.Character then onChar(player.Character) end
+    player.CharacterAdded:Connect(onChar)
+end
+
+Players.PlayerAdded:Connect(hookTorch)
+for _, p in ipairs(Players:GetPlayers()) do hookTorch(p) end
+Players.PlayerRemoving:Connect(function(p) torchOffAt[p] = nil end)
 
 -- ── Build cop CFrame from position + look direction ───────────────────
 local function makeCF(pos, lookDir)
@@ -50,13 +78,13 @@ local function moveCop(cop, newCF)
     end
 end
 
--- ── Build realistic police officer ───────────────────────────────────
+-- ── Build realistic police officer — ALL parts Anchored ───────────────
 local function makeCopModel(spawnPos)
     local model = Instance.new("Model")
     model.Name  = "Cop"
 
     local baseCF = CFrame.new(spawnPos.X, TORSO_Y, spawnPos.Z)
-    local parts  = {}
+    local parts  = {}  -- { part, offset CFrame }
 
     local function add(name, size, offset, color, mat)
         local p = Instance.new("Part")
@@ -73,31 +101,37 @@ local function makeCopModel(spawnPos)
         return p
     end
 
-    local torso = add("Torso",    Vector3.new(2,   2,   1),   Vector3.new(0, 0, 0),       BrickColor.new("Navy blue"))
-    add("Belt",                   Vector3.new(2.1, 0.3, 1.1), Vector3.new(0,-1.1, 0),     BrickColor.new("Black"))
+    -- Torso (primary)
+    local torso = add("Torso",    Vector3.new(2,   2,   1),   Vector3.new(0, 0, 0),      BrickColor.new("Navy blue"))
+    add("Belt",                   Vector3.new(2.1, 0.3, 1.1), Vector3.new(0,-1.1, 0),    BrickColor.new("Black"))
     add("Badge",                  Vector3.new(0.45,0.45,0.1), Vector3.new(-0.5,0.5,-0.55),BrickColor.new("Bright yellow"), Enum.Material.Metal)
     add("Gun",                    Vector3.new(0.25,0.7, 1),   Vector3.new(1.1,-0.9,-0.3), BrickColor.new("Dark stone grey"), Enum.Material.Metal)
 
-    local head = add("Head",      Vector3.new(2,   1,   1),   Vector3.new(0, 1.5, 0),     BrickColor.new("Nougat"))
+    -- Head + face
+    local head = add("Head",      Vector3.new(2,   1,   1),   Vector3.new(0, 1.5, 0),    BrickColor.new("Nougat"))
     local face  = Instance.new("Decal")
     face.Texture = "rbxasset://textures/face.png"
     face.Face    = Enum.NormalId.Front
     face.Parent  = head
 
-    add("HatBrim",                Vector3.new(2.5, 0.15,2.1), Vector3.new(0, 2.15,-0.1),  BrickColor.new("Black"))
-    add("HatTop",                 Vector3.new(2,   0.9, 1.8), Vector3.new(0, 2.6,  0),    BrickColor.new("Black"))
-    add("HatBadge",               Vector3.new(0.4, 0.35,0.1), Vector3.new(0, 2.6, -0.95), BrickColor.new("Mid gray"), Enum.Material.Metal)
+    -- Hat
+    add("HatBrim",                Vector3.new(2.5, 0.15,2.1), Vector3.new(0, 2.15,-0.1), BrickColor.new("Black"))
+    add("HatTop",                 Vector3.new(2,   0.9, 1.8), Vector3.new(0, 2.6,  0),   BrickColor.new("Black"))
+    add("HatBadge",               Vector3.new(0.4, 0.35,0.1), Vector3.new(0, 2.6, -0.95),BrickColor.new("Mid gray"), Enum.Material.Metal)
 
-    add("LeftArm",                Vector3.new(1,   2,   1),   Vector3.new(-1.5, 0,   0),  BrickColor.new("Navy blue"))
-    add("RightArm",               Vector3.new(1,   2,   1),   Vector3.new( 1.5, 0,   0),  BrickColor.new("Navy blue"))
-    add("LeftHand",               Vector3.new(0.9, 0.6, 0.9), Vector3.new(-1.5,-1.3, 0),  BrickColor.new("Nougat"))
-    add("RightHand",              Vector3.new(0.9, 0.6, 0.9), Vector3.new( 1.5,-1.3, 0),  BrickColor.new("Nougat"))
+    -- Arms + hands
+    add("LeftArm",                Vector3.new(1,   2,   1),   Vector3.new(-1.5, 0,   0), BrickColor.new("Navy blue"))
+    add("RightArm",               Vector3.new(1,   2,   1),   Vector3.new( 1.5, 0,   0), BrickColor.new("Navy blue"))
+    add("LeftHand",               Vector3.new(0.9, 0.6, 0.9), Vector3.new(-1.5,-1.3, 0), BrickColor.new("Nougat"))
+    add("RightHand",              Vector3.new(0.9, 0.6, 0.9), Vector3.new( 1.5,-1.3, 0), BrickColor.new("Nougat"))
 
-    add("LeftLeg",                Vector3.new(0.9, 2,   1),   Vector3.new(-0.5,-2,   0),  BrickColor.new("Dark blue"))
-    add("RightLeg",               Vector3.new(0.9, 2,   1),   Vector3.new( 0.5,-2,   0),  BrickColor.new("Dark blue"))
+    -- Legs + boots
+    add("LeftLeg",                Vector3.new(0.9, 2,   1),   Vector3.new(-0.5,-2,   0), BrickColor.new("Dark blue"))
+    add("RightLeg",               Vector3.new(0.9, 2,   1),   Vector3.new( 0.5,-2,   0), BrickColor.new("Dark blue"))
     add("LeftBoot",               Vector3.new(1,   0.5, 1.3), Vector3.new(-0.5,-3.25,0.1),BrickColor.new("Black"))
     add("RightBoot",              Vector3.new(1,   0.5, 1.3), Vector3.new( 0.5,-3.25,0.1),BrickColor.new("Black"))
 
+    -- "POLICE" text on back
     local sg = Instance.new("SurfaceGui")
     sg.Face = Enum.NormalId.Back ; sg.Parent = torso
     local sgL = Instance.new("TextLabel")
@@ -106,6 +140,7 @@ local function makeCopModel(spawnPos)
     sgL.BackgroundColor3 = Color3.new(1,1,1)
     sgL.Font = Enum.Font.GothamBold ; sgL.TextScaled = true ; sgL.Parent = sg
 
+    -- Overhead HP billboard
     local bg = Instance.new("BillboardGui")
     bg.Size = UDim2.new(0,120,0,32) ; bg.StudsOffset = Vector3.new(0,4,0)
     bg.Parent = head
@@ -127,19 +162,19 @@ local function makeCopModel(spawnPos)
     return model, parts, torso
 end
 
--- ── Line-of-sight check ───────────────────────────────────────────────
+-- ── Line-of-sight check (cop parts are CanCollide=false so ignored) ──
 local function hasLOS(fromPos, toPos)
     local dir    = toPos - fromPos
     local result = workspace:Raycast(fromPos, dir)
     if result then
         for _, pl in ipairs(Players:GetPlayers()) do
             if pl.Character and result.Instance:IsDescendantOf(pl.Character) then
-                return true
+                return true  -- ray hit the player directly
             end
         end
-        return false
+        return false  -- ray hit a wall / nook / parapet first
     end
-    return true
+    return true  -- nothing blocked the path
 end
 
 -- ── Patrol point inside a cave ────────────────────────────────────────
@@ -152,7 +187,7 @@ local function patrolPoint(caveId)
     )
 end
 
--- ── Shoot player ──────────────────────────────────────────────────────
+-- ── Shoot player (distance-based damage) ─────────────────────────────
 local function shootPlayer(cop, player)
     if not player.Character then return end
     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
@@ -174,14 +209,15 @@ end
 local function damageCop(cop, dmg)
     cop.hp = math.max(0, cop.hp - dmg)
 
+    -- Update HP label
     local head = cop.model:FindFirstChild("Head")
     local bg   = head and head:FindFirstChildOfClass("BillboardGui")
     local hpL  = bg and bg:FindFirstChild("HPLabel")
     if hpL then
         hpL.Text = "HP: " .. cop.hp
         hpL.TextColor3 = cop.hp > 60 and Color3.fromRGB(80,255,80)
-            or cop.hp > 30 and Color3.fromRGB(255,200,0)
-            or Color3.fromRGB(255,60,60)
+                      or cop.hp > 30 and Color3.fromRGB(255,200,0)
+                      or Color3.fromRGB(255,60,60)
     end
 
     if cop.hp <= 0 then
@@ -192,6 +228,7 @@ local function damageCop(cop, dmg)
             if c == cop then table.remove(AllCops, i) break end
         end
 
+        -- Respawn after delay
         task.delay(Config.COP_REGEN_TIME, function()
             local caveData = Config.CAVES[originCave]
             if not caveData then return end
@@ -221,12 +258,14 @@ function copLoop(cop)
     while cop.alive do
         task.wait(0.05)
 
+        -- Safety check
         if not cop.alive or not cop.model or not cop.model.Parent then break end
 
         local ok, err = pcall(function()
             local torsoPos = cop.torso.Position
             shootCD = math.max(0, shootCD - 0.05)
 
+            -- Find nearest player using simple distance (no raycast LOS)
             local nearest, nearDist, nearHRP = nil, math.huge, nil
             for _, pl in ipairs(Players:GetPlayers()) do
                 if pl.Character then
@@ -240,13 +279,14 @@ function copLoop(cop)
                 end
             end
 
-            -- Torch off → cops nearly blind (6 studs); torch on → full range
-            local effectiveRange = (nearest and playerTorchOn[nearest]) and Config.COP_DETECT_RANGE or 6
+            -- Invisible for 10s after torch off; visible otherwise
             local detected = nearest ~= nil
-                and nearDist <= effectiveRange
+                and playerVisible(nearest)
+                and nearDist <= Config.COP_DETECT_RANGE
                 and hasLOS(torsoPos, nearHRP.Position)
 
             if detected then
+                -- ── CHASE ─────────────────────────────────────────────
                 local tgt    = Vector3.new(nearHRP.Position.X, torsoPos.Y, nearHRP.Position.Z)
                 local dir    = tgt - torsoPos
                 local newPos = torsoPos
@@ -263,12 +303,15 @@ function copLoop(cop)
                     shootCD = Config.COP_FIRE_RATE
                 end
 
+                -- Reset rotate timer so cop doesn't leave cave while chasing
                 rotateT = math.random(Config.COP_ROTATE_MIN, Config.COP_ROTATE_MAX)
 
             else
+                -- ── PATROL ────────────────────────────────────────────
                 local dir = patrolTgt - torsoPos
 
                 if dir.Magnitude < 2 then
+                    -- Reached waypoint — pick new one or rotate cave
                     rotateT = rotateT - 2
                     if rotateT <= 0 then
                         local conns = Config.CAVES[cop.caveId].connections
@@ -290,16 +333,7 @@ function copLoop(cop)
     end
 end
 
--- ── Track torch state from clients ───────────────────────────────────
-getRemote("RE_TorchState").OnServerEvent:Connect(function(player, isOn)
-    playerTorchOn[player] = isOn
-end)
-
-Players.PlayerRemoving:Connect(function(player)
-    playerTorchOn[player] = nil
-end)
-
--- ── Player shoots ─────────────────────────────────────────────────────
+-- ── Player shoots — ray-line distance hit detection ───────────────────
 getRemote("RE_ShootWeapon").OnServerEvent:Connect(function(player, origin, direction, tier)
     local weaponData = Config.WEAPONS[tier]
     if not weaponData then return end
@@ -312,8 +346,10 @@ getRemote("RE_ShootWeapon").OnServerEvent:Connect(function(player, origin, direc
     for _, cop in ipairs(AllCops) do
         if cop.alive and cop.model and cop.model.Parent then
             local copPos = cop.torso.Position
+            -- Project cop onto the ray to find the closest point
             local t = (copPos - origin):Dot(dir)
             if t > 0 and t <= weaponData.range then
+                -- Perpendicular distance from cop center to the bullet ray
                 local perpDist = (copPos - (origin + dir * t)).Magnitude
                 if perpDist < 6 and perpDist < bestDist then
                     bestDist = perpDist
@@ -342,4 +378,4 @@ for caveId, data in pairs(Config.CAVES) do
     end
 end
 
-print("[CopManager] Cops spawned — torch-aware detection active")
+print("[CopManager] Cops spawned — patrol, chase and shooting active")
